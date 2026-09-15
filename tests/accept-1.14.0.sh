@@ -31,6 +31,9 @@ export BASE_DIR
 for f in lib/env.sh lib/io.sh lib/storage.sh lib/settings.sh lib/cert.sh lib/render.sh; do
   if [ -f "${f}" ]; then . "${f}"; else printf '[错误] 缺 %s\n' "${f}" >&2; exit 2; fi
 done
+# 2.5：确保 storage 骨架存在（nodes/secrets/config 若缺失则初始化为空 {}），
+# 保证干净克隆上 render_config 端到端可跑（iter_node_tags 依赖 NODES_FILE 存在）
+init_storage
 
 # ---- 3. 断言 A：route.sniff 已删（1.13.0 起移除） ----
 if grep -nqE 'route:\s*\{[^}]*sniff' lib/render.sh; then
@@ -38,14 +41,22 @@ if grep -nqE 'route:\s*\{[^}]*sniff' lib/render.sh; then
   exit 1
 fi
 
-# ---- 4. 断言 B：全部 inbound 的 tcp_keep_alive 为 string（1.14.0 仅认 string 时长） ----
-_bad="$(grep -nE 'tcp_keep_alive:\s*true,?' lib/render.sh || true)"
+# ---- 4. 断言 B：全部 inbound 的 tcp_keep_alive 为 string（1.14.0 仅认 string 时长，且 1.14.0 移除 tcp_keep_alive_interval） ----
+_bad="$(grep -nE 'tcp_keep_alive:\s*true,?|tcp_keep_alive_interval:' lib/render.sh || true)"
 if [ -n "${_bad}" ]; then
-  printf '[1;31m[错误][0m tcp_keep_alive 仍是 bool（1.14.0 报 cannot unmarshal bool ... of type string）：\n%s\n' "${_bad}" >&2
+  printf '[1;31m[错误][0m tcp_keep_alive 仍是 bool，或出现已被 1.14.0 移除的 tcp_keep_alive_interval 字段：\n%s\n' "${_bad}" >&2
   exit 1
 fi
-_count="$(grep -cE 'tcp_keep_alive:\s*"30s"' lib/render.sh || true)"
-printf '== tcp_keep_alive: "30s" 命中 %s 处（应≥5:五个 inbound 分支）==\n' "${_count}"
+_count="$(grep -cE 'tcp_keep_alive:\s*\$tka_iv' lib/render.sh || true)"
+printf '== tcp_keep_alive: $tka_iv 命中 %s 处（应≥5:五个 inbound 分支）==\n' "${_count}"
+
+# ---- 4.5 断言 C：DNS server 已是 1.14.0 新格式（type+server，而非 1.12 起弃用的 address） ----
+_bad_dns="$(grep -nE '\{ address: \.' lib/render.sh || true)"
+if [ -n "${_bad_dns}" ]; then
+  printf '[1;31m[错误][0m render.sh 仍用 legacy DNS 格式 address:（1.14.0 报 dns.servers[0]: legacy DNS server formats ... removed）:\n%s\n前往 \x27render_dns_object\x27 改为新 type/server 格式。\n' "${_bad_dns}" >&2
+  exit 1
+fi
+printf '== DNS legacy address 字段已清除（1.14.0 新 type/server 格式）==\n'
 
 # ---- 5. 端到端：仓库 render 链产出 config → 真二进制 check（这行就是 VPS service.sh 的判决点） ----
 printf '== 仓库 render_config 全链 + 真 %s check ==\n' "${_ver:-?}"

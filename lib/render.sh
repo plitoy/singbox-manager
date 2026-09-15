@@ -56,10 +56,37 @@ render_dns_object() {
   6 | v6) __strategy="ipv4_and_ipv6" ;;
   *) __strategy="prefer_ipv4" ;;
   esac
+  # sing-box 1.12.0 起 legacy `address` 字段弃用，1.14.0 移除（schema 直接拒绝）。
+  # 新格式按协议拆成 type/server 两个字段：https://host/dns-query → {type:"https", server:"host"},
+  # tls://host → {type:"tls", server:"host"}, bare/none → {type:"udp", server:"IP-hosts"}。
+  # 1.14.0 要求：域名型 DNS server（server 为域名而非字面 IP）必须显式提供 domain_resolver，
+  # 否则 FATAL: missing domain resolver for domain server address。为避免"域名解析域名"的自举死循环，
+  # 固定附带纯 IP 的 UDP bootstrap 解析器并 tag: "bootstrap"，凡 server 不是字面 IP 一律
+  # domain_resolver: "bootstrap"（先经 bootstrap 解析出 IP 再连真实 server）。
+  # independent_cache 在 1.14.0 弃用（1.16.0 移除），去掉，缓存即共享缓存。
   jq -n --arg dns_servers "${__dns_servers}" --arg strategy "${__strategy}" '
     { dns: {
-        servers: ($dns_servers | split(",") | map(select(. != "") | { address: . })),
-        independent_cache: true,
+        servers: (
+          ($dns_servers | split(",")
+            | map(select(. != "")
+              | (if startswith("https://") then
+                  { type: "https", server: (sub("^https://"; "") | split("/")[0]) }
+                 elif startswith("tls://") then
+                  { type: "tls", server: sub("^tls://"; "") }
+                 elif startswith("h3://") then
+                  { type: "h3", server: (sub("^h3://"; "") | split("/")[0]) }
+                 elif startswith("quic://") then
+                  { type: "quic", server: sub("^quic://"; "") }
+                 elif startswith("udp://") then
+                  { type: "udp", server: sub("^udp://"; "") }
+                 elif startswith("tcp://") then
+                  { type: "tcp", server: sub("^tcp://"; "") }
+                 else
+                  { type: "udp", server: . }
+                 end)))
+          | map(if (.server | test("^[0-9a-fA-F:.]+$")) then . else (. + { domain_resolver: "bootstrap" }) end)
+          + [ { type: "udp", tag: "bootstrap", server: "8.8.8.8" } ]
+          ),
         disable_cache: false,
         cache_capacity: 4096,
         strategy: $strategy
@@ -217,10 +244,10 @@ render_config() {
     outbounds: [
       { type: "direct", tag: "direct" }
     ],
-    route: {
+    route: ({
       final: "direct",
       auto_detect_interface: true
-    }
+    } + (if ($dns_object | has("dns")) then { default_domain_resolver: { server: "bootstrap" } } else {} end))
   } + $dns_object + $experimental' >"${tmp}"; then
     rm -f "${tmp}"
     print_err "写入 sing-box 配置失败。"

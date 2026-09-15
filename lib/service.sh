@@ -519,4 +519,10 @@ ensure_singbox_ready() {
     print_info "检测到 sing-box 尚未安装，开始自动安装。"
     install_core
   fi
+  # F-05：systemd unit 缺失时补建（历史上 install 若中途失败/被清理会留下无 unit 状态，
+  # rep/restart/update 等后续流程单独 start 即失败；这里幂等重建，存在则覆盖为同内容）。
+  if systemd_available && [ ! -f "${SYSTEMD_SERVICE_FILE}" ]; then
+    print_info "systemd unit 缺失，重建服务单元。"
+    create_systemd_units
+  fi
 }
