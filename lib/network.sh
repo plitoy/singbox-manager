@@ -103,9 +103,9 @@ get_public_ip() {
         if rawip="$(extract_public_ip "$(tr -d '\r\n' <"${_f}" 2>/dev/null || true)")"; then
           rm -rf "${probe_tmp}"
           PUBLIC_IP_CACHE="${rawip}"
-          set_setting "public_ip" "${rawip}"
-          set_setting "public_ip_version" "${ipver}"
-          set_setting "public_ip_ts" "$now"
+          set_setting "public_ip" "${rawip}" || true
+          set_setting "public_ip_version" "${ipver}" || true
+          set_setting "public_ip_ts" "$now" || true
           printf '%s' "${PUBLIC_IP_CACHE}"
           return 0
         fi
@@ -115,9 +115,9 @@ get_public_ip() {
       for url in "${probe_urls[@]}"; do
         if ip="$(extract_public_ip "$(curl -fsS --max-time 5 ${flag} "$url" 2>/dev/null | tr -d '\r\n' || true)")"; then
           PUBLIC_IP_CACHE="$ip"
-          set_setting "public_ip" "$ip"
-          set_setting "public_ip_version" "${ipver}"
-          set_setting "public_ip_ts" "$now"
+          set_setting "public_ip" "$ip" || true
+          set_setting "public_ip_version" "${ipver}" || true
+          set_setting "public_ip_ts" "$now" || true
           printf '%s' "${PUBLIC_IP_CACHE}"
           return 0
         fi
