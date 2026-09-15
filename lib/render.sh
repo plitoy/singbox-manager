@@ -341,8 +341,7 @@ render_inbound_for_tag() {
           listen: "::",
           listen_port: $port,
           tcp_fast_open: $tfo,
-          tcp_keep_alive: "30s",
-          tcp_keep_alive_interval: $tka_iv,
+          tcp_keep_alive: $tka_iv,
           users: [{ name: $name, uuid: $uuid, flow: "xtls-rprx-vision" }],
           tls: {
             enabled: true,
@@ -374,8 +373,7 @@ render_inbound_for_tag() {
           listen: "::",
           listen_port: $port,
           tcp_fast_open: $tfo,
-          tcp_keep_alive: "30s",
-          tcp_keep_alive_interval: $tka_iv,
+          tcp_keep_alive: $tka_iv,
           users: [{ name: $name, uuid: $uuid }],
           tls: {
             enabled: true,
@@ -400,8 +398,7 @@ render_inbound_for_tag() {
           listen: "::",
           listen_port: $port,
           tcp_fast_open: $tfo,
-          tcp_keep_alive: "30s",
-          tcp_keep_alive_interval: $tka_iv,
+          tcp_keep_alive: $tka_iv,
           users: [{ name: $name, password: $password }],
           tls: {
             enabled: true,
@@ -424,8 +421,7 @@ render_inbound_for_tag() {
           listen: "127.0.0.1",
           listen_port: $port,
           tcp_fast_open: $tfo,
-          tcp_keep_alive: "30s",
-          tcp_keep_alive_interval: $tka_iv,
+          tcp_keep_alive: $tka_iv,
           users: [{ name: $name, uuid: $uuid }],
           transport: { type: "ws", path: $ws_path, max_early_data: 2048, early_data_header_name: "Sec-WebSocket-Protocol" }
         }'
@@ -512,8 +508,7 @@ render_inbound_for_tag() {
           listen: "::",
           listen_port: $port,
           tcp_fast_open: $tfo,
-          tcp_keep_alive: "30s",
-          tcp_keep_alive_interval: $tka_iv,
+          tcp_keep_alive: $tka_iv,
           users: [{ username: $username, password: $password }]
         }'
     ;;
