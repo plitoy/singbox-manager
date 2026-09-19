@@ -390,32 +390,23 @@ running_singbox_pid() {
   return 0
 }
 
-# P1：SIGHUP 优雅热重载。sing-box 收到 HUP 后平滑重载 config.json：
-# 存量连接不断、新连接按新配置（节点/证书/密钥/DNS/keepalive 等变更均适用）。
-# 语义：
-#   - 服务运行且 PID 确为 sing-box 实例 → 校验新配置后发 SIGHUP；
-#   - 配置校验失败 → fail-closed，拒绝热重载并返回 1（保留运行中配置）；
-#   - 服务未运行 / PID 身份不符 / 信号失败 → 回退完整 start_service。
-#   就绪自检（P3）在非测试环境于热重载后执行，端口未监听时给出明确报错。
+# P1：配置重载。sing-box 官方不支持 SIGHUP 热重载（Issue #284，2022-12 至今未实现），
+# 仅注册 SIGINT/SIGTERM；未忽略的 SIGHUP 默认直接终止进程，nohup 启动时又会被置为
+# SIG_IGN 而静默无效。因此统一为"校验通过 → stop + start（systemd 即 restart，秒级）"：
+#   - 配置校验失败 → fail-closed，拒绝重载并返回 1（保留运行中的旧配置）；
+#   - 服务未运行 → 直接完整启动。
+#   就绪自检（P3）在非测试环境于重启后执行，端口未监听时给出明确报错。
 reload_service() {
-  local pid
-  pid="$(running_singbox_pid 2>/dev/null || true)"
-  if [ -n "${pid}" ] && pid_matches_binary_or_alive "${pid}" "${SINGBOX_BIN}"; then
-    if ! "${SINGBOX_BIN}" check -c "${CONFIG_FILE}" >/dev/null 2>&1; then
-      print_err "配置校验失败，已拒绝热重载（保留现有运行配置）。"
-      return 1
-    fi
-    if kill -HUP "${pid}" >/dev/null 2>&1; then
-      print_ok "已向运行中的 sing-box（pid ${pid}）发送 SIGHUP，热重载配置。"
-      if [ "${SBM_TEST_MODE:-0}" != "1" ]; then
-        verify_data_plane_ready || true
-      fi
-      return 0
-    fi
-    print_warn "SIGHUP 热重载失败，回退为完整重启。"
-  else
-    print_info "服务未运行或实例不匹配，走完整启动。"
+  if ! "${SINGBOX_BIN}" check -c "${CONFIG_FILE}" >/dev/null 2>&1; then
+    print_err "配置校验失败，已拒绝重载（保留现有运行配置）。"
+    return 1
   fi
+  if [ -n "$(running_singbox_pid 2>/dev/null || true)" ]; then
+    print_info "配置校验通过，重启 sing-box 以应用新配置（不支持 SIGHUP 热重载，走 stop+start）。"
+  else
+    print_info "服务未运行，直接启动。"
+  fi
+  stop_service
   start_service
   if [ "${SBM_TEST_MODE:-0}" != "1" ]; then
     verify_data_plane_ready || true

@@ -41,7 +41,7 @@ render_dns_object() {
   for __ds in ${__dns_servers//,/ }; do
     [ -n "${__ds}" ] || continue
     case "${__ds}" in
-    https://* | tls://* | udp://* | h3://* | quic://*) ok=1 ;;
+    https://* | tls://* | udp://* | h3://* | quic://* | tcp://*) ok=1 ;;
     *)
       ok=0
       break

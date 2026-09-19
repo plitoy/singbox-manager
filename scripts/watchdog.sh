@@ -89,9 +89,9 @@ ensure_log_rotation() {
 # 额外旁路 UDP(QUIC) 端口绑定探测（TCP 探活对 hy2/tuic 无意义）：
 #   UDP 节点存在且全部未绑定 → 假活；status=2(全 UDP) 且绑定正常 → 健康。
 singbox_healthy() {
-  local status udp_cnt
-  singbox_probe_status
-  status=$?
+  local status=0 udp_cnt
+  # set -e 下用 || 捕获探活退出码，防止假死/不适用时提前退出
+  singbox_probe_status || status=$?
   [ "${status}" = 0 ] && return 0
   udp_cnt="$(udp_node_count)"
   if [ "${udp_cnt}" -gt 0 ]; then
@@ -349,10 +349,10 @@ probe_token_tunnel() {
 # 5.5：minimal metrics——每轮 watchdog 追加一行 jsonl（探活三态，秒级时间戳），
 # 供运维排障回溯探活失败窗口；超过 5MB 裁为 backups 仅留最近一份。
 write_metrics_line() {
-  local ts probe sz
+  local ts probe=0 sz
   ts="$(date +%s 2>/dev/null || printf 0)"
-  singbox_probe_status
-  probe=$?
+  # F1：set -e 下必须用 || 捕获探活退出码，否则探活失败（1/2）时整行被吞，指标永不落盘
+  singbox_probe_status || probe=$?
   printf '{"ts":%s,"probe":%s}\n' "${ts}" "${probe}" >>"${RUNTIME_DIR}/metrics.jsonl" 2>/dev/null || true
   sz="$(wc -c <"${RUNTIME_DIR}/metrics.jsonl" 2>/dev/null | tr -d '[:space:]' || printf 0)"
   if [ -n "${sz}" ] && [ "${sz}" -gt 5242880 ]; then

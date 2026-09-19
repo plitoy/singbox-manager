@@ -26,7 +26,7 @@ speedtest_download_url() {
 }
 
 ensure_ookla_speedtest() {
-  local bin url tmp_dir
+  local bin url tmp_dir arch expected actual
   [ -n "${NET_TUNE_SKIP_SPEEDTEST:-}" ] && return 1
   command_exists curl || command_exists wget || return 1
   command_exists tar || return 1
@@ -44,6 +44,23 @@ ensure_ookla_speedtest() {
       rm -rf "${tmp_dir}"
       return 1
     }
+  fi
+  # M1：OOKLA_SHA256 强校验（下载文件即官方发布包），不匹配仅弃用本次下载并回退缺省，
+  # 不阻断主流程；未定义该变量时保持仅"可执行"校验。
+  arch="$(uname -m)"
+  expected="${OOKLA_SHA256[${arch}]:-}"
+  if [ -n "${expected}" ]; then
+    actual=""
+    if command_exists sha256sum; then
+      actual="$(sha256sum "${tmp_dir}/t.tgz" | awk '{print $1}')"
+    elif command_exists shasum; then
+      actual="$(shasum -a 256 "${tmp_dir}/t.tgz" | awk '{print $1}')"
+    fi
+    if [ -z "${actual}" ] || [ "${actual}" != "${expected}" ]; then
+      print_warn "speedtest 下载校验不匹配（期望 ${expected:0:12}...，实际 ${actual:-无法计算}），已弃用，使用缺省调优参数。"
+      rm -rf "${tmp_dir}"
+      return 1
+    fi
   fi
   tar -xzf "${tmp_dir}/t.tgz" -C "${tmp_dir}" || {
     rm -rf "${tmp_dir}"

@@ -89,7 +89,9 @@ cert_fingerprint() {
   mtime="$(stat -c %Y "${cert_file}" 2>/dev/null || true)"
   [ -n "${mtime}" ] || mtime=""
   key="${cert_file}|${mtime}"
-  if [[ -v "CERT_FP_CACHE[$key]" ]]; then
+  # L7：关联数组下标 -v 检测要求 bash >= 4.3，而 require_bash4 仅保证 >= 4.0，
+  # 改用 ${arr[key]+set} 惯用法（bash 3.0+ 通吃），避免低版本运行时数组未定义告警。
+  if [[ "${CERT_FP_CACHE[$key]+set}" = "set" ]]; then
     printf '%s' "${CERT_FP_CACHE["$key"]}"
     return 0
   fi
@@ -240,10 +242,13 @@ prompt_certificate_bundle() {
 
 cleanup_orphan_certs() {
   local f path tag
+  # 约定（L8 钉住）：证书文件名一律为 <tag>.crt / <tag>.key / <tag>.custom.crt / <tag>.custom.key，
+  # tag 即首点前段（generate_tag 产物为 <前缀>-<时间戳>-<hex>，不含点——若未来 tag 允许含点必须先改此处）。
+  # 防御性校验 tag 字符集（仅允许 [A-Za-z0-9_-]），异常命名一律跳过，绝不误删。
   while IFS= read -r f; do
     path="${f##*/}"
     tag="${path%%.*}"
-    [ -n "${tag}" ] || continue
+    [[ "${tag}" =~ ^[A-Za-z0-9_-]+$ ]] || continue
     if ! jq -e --arg tag "${tag}" 'has($tag)' "${NODES_FILE}" >/dev/null 2>&1; then
       rm -f "${f}"
     fi

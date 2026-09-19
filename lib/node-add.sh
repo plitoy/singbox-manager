@@ -6,7 +6,6 @@ umask 077
 add_vless_reality() {
   local tag port name uuid reality_server key_output private_key public_key short_id node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "vless-reality")"
   port="$(prompt_port 443)"
   name="$(prompt_with_default "节点名称" "VLESS-Reality")"
@@ -21,6 +20,8 @@ add_vless_reality() {
   [ -n "$public_key" ] || fatal "无法解析 Reality 公钥。"
   short_id="$(generate_hex 4)"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "vless-reality" \
     --arg name "$name" \
@@ -54,7 +55,6 @@ add_vless_reality() {
 add_vless_ws_tls() {
   local tag port name uuid preferred_domain host_domain ws_path cert_bundle cert_mode cert_file key_file node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "vless-ws-tls")"
   port="$(prompt_port 8443)"
   name="$(prompt_with_default "节点名称" "VLESS-WS-TLS")"
@@ -69,6 +69,8 @@ add_vless_ws_tls() {
   cert_file="${cert_file%%|*}"
   key_file="${cert_bundle##*|}"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "vless-ws-tls" \
     --arg name "$name" \
@@ -106,7 +108,6 @@ add_vless_ws_tls() {
 add_anytls() {
   local tag port name password tls_server cert_bundle cert_mode cert_file key_file node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "anytls")"
   port="$(prompt_port 5443)"
   name="$(prompt_with_default "节点名称" "AnyTLS")"
@@ -119,6 +120,8 @@ add_anytls() {
   cert_file="${cert_file%%|*}"
   key_file="${cert_bundle##*|}"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "anytls" \
     --arg name "$name" \
@@ -152,7 +155,6 @@ add_anytls() {
 add_vless_argo() {
   local tag port name uuid preferred_domain ws_path argo_mode argo_token endpoint_domain node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "vless-argo")"
   port="$(prompt_port 8001)"
   name="$(prompt_with_default "节点名称" "VLESS-Argo")"
@@ -176,6 +178,8 @@ add_vless_argo() {
     endpoint_domain=""
   fi
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "vless-argo" \
     --arg name "$name" \
@@ -198,6 +202,8 @@ add_vless_argo() {
     --arg argo_token "$argo_token" '{ uuid: $uuid, argo_token: $argo_token }')"
 
   if ! save_node_bundle "$tag" "$node_json" "$secret_json" || ! render_config || ! reload_service || ! start_argo_node "$tag"; then
+    # L12：先显式停掉可能已启动的 cloudflared 隧道，避免回滚后进程残留/孤儿 PID
+    stop_argo_node "$tag" 2>/dev/null || true
     rollback_new_node "$tag"
     release_lock
     fatal "添加节点失败：${name}"
@@ -211,7 +217,6 @@ add_vless_argo() {
 add_tuic_v5() {
   local tag port name uuid password tls_server cert_bundle cert_mode cert_file key_file node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "tuic-v5")"
   port="$(prompt_port 10443)"
   name="$(prompt_with_default "节点名称" "TUIC-v5")"
@@ -226,6 +231,8 @@ add_tuic_v5() {
   cert_file="${cert_file%%|*}"
   key_file="${cert_bundle##*|}"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "tuic-v5" \
     --arg name "$name" \
@@ -259,16 +266,25 @@ add_tuic_v5() {
 add_hy2() {
   local tag port name password tls_server cert_bundle cert_mode cert_file key_file node_json secret_json up_mbps down_mbps
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "hy2")"
   port="$(prompt_port 11443)"
   name="$(prompt_with_default "节点名称" "Hysteria2")"
   password="$(prompt_optional_value "密码（留空自动生成）")"
   password="${password:-$(generate_hex 8)}"
   tls_server="$(prompt_safe_domain "SNI 域名" "${DEFAULT_TLS_SERVER}")"
-  up_mbps="$(prompt_optional_value "上行带宽 Mbps（留空=默认 200）")"
+  # L3：带宽须为正整数（留空=默认 200，0=不限速），非数字/负数直接拒收重输；
+  # 非数字会被 jq --argjson 当成非法 JSON 中断，必须在此拦截。
+  up_mbps="$(prompt_optional_value "上行带宽 Mbps（留空=默认 200，0=不限速）")"
+  while [ -n "${up_mbps}" ] && ! [[ "${up_mbps}" =~ ^[0-9]+$ ]]; do
+    print_warn "上行带宽应为非负整数（Mbps）。"
+    up_mbps="$(prompt_optional_value "上行带宽 Mbps（留空=默认 200，0=不限速）")"
+  done
   up_mbps="${up_mbps:-200}"
-  down_mbps="$(prompt_optional_value "下行带宽 Mbps（留空=默认 200）")"
+  down_mbps="$(prompt_optional_value "下行带宽 Mbps（留空=默认 200，0=不限速）")"
+  while [ -n "${down_mbps}" ] && ! [[ "${down_mbps}" =~ ^[0-9]+$ ]]; do
+    print_warn "下行带宽应为非负整数（Mbps）。"
+    down_mbps="$(prompt_optional_value "下行带宽 Mbps（留空=默认 200，0=不限速）")"
+  done
   down_mbps="${down_mbps:-200}"
   cert_bundle="$(prompt_certificate_bundle "$tag" "$tls_server")"
   cert_mode="${cert_bundle%%|*}"
@@ -276,6 +292,8 @@ add_hy2() {
   cert_file="${cert_file%%|*}"
   key_file="${cert_bundle##*|}"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "hy2" \
     --arg name "$name" \
@@ -313,7 +331,6 @@ add_hy2() {
 add_socks5() {
   local tag port name username password node_json secret_json
   ensure_singbox_ready
-  acquire_lock
   tag="$(generate_tag "socks5")"
   port="$(prompt_port 1080)"
   name="$(prompt_with_default "节点名称" "SOCKS5")"
@@ -321,6 +338,8 @@ add_socks5() {
   password="$(prompt_optional_value "密码（留空自动生成）")"
   password="${password:-$(generate_hex 6)}"
 
+  # L11：先收集完输入再拿锁，避免用户停在提示期间长时间占用锁阻塞其他实例
+  acquire_lock
   node_json="$(jq -n \
     --arg protocol "socks5" \
     --arg name "$name" \

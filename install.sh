@@ -5,10 +5,10 @@ umask 077
 
 REPO_OWNER="hynize"
 REPO_NAME="singbox-manager"
-PROJECT_VERSION="v1.5.7"
-PACKAGE_NAME="singbox-manager-v1.5.7.tar.gz"
+PROJECT_VERSION="v1.5.8"
+PACKAGE_NAME="singbox-manager-v1.5.8.tar.gz"
 # 发布流程：scripts/build-release-bundle.sh 构建可复现 bundle，其 SHA256 与此处一致
-PACKAGE_SHA256="4597a2eb9124dbc54908ba6177452585f68bd80fd78f8febf4bdae1290713be2"
+PACKAGE_SHA256="f4c92266ee241b0ef22eeb5c02394b7f4ea3c6c970abfb32c1974012b49913b5"
 PACKAGE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${PROJECT_VERSION}/${PACKAGE_NAME}"
 
 INSTALL_BIN="/usr/local/bin/sbm"
@@ -61,7 +61,8 @@ verify_bundle() {
 
 install_bundle() {
   local bundle="$1"
-  local tmpdir root_dir
+  local tmpdir root_dir lib_file
+  local all_ok=0
 
   tmpdir="$(mktemp -d)"
   tar -xzf "$bundle" -C "$tmpdir"
@@ -73,13 +74,18 @@ install_bundle() {
   fi
 
   # 安装前校验候选脚本语法，避免半写入造成混装
+  # L9：每个脚本只 bash -n 一次（原先在 lib 循环内 每 个 lib 都重复 校验 sb/mtp/watchdog）
   for lib_file in "${root_dir}"/lib/*.sh; do
-    if ! bash -n "${root_dir}/sb.sh" || ! bash -n "${root_dir}/mtp.sh" || ! bash -n "$lib_file" || ! bash -n "${root_dir}/scripts/watchdog.sh"; then
-      rm -rf "$tmpdir"
-      echo "发布包脚本语法校验失败，已取消安装。" >&2
-      exit 1
-    fi
+    bash -n "$lib_file" || all_ok=1
   done
+  bash -n "${root_dir}/sb.sh" || all_ok=1
+  bash -n "${root_dir}/mtp.sh" || all_ok=1
+  bash -n "${root_dir}/scripts/watchdog.sh" || all_ok=1
+  if [ "${all_ok}" = "1" ]; then
+    rm -rf "$tmpdir"
+    echo "发布包脚本语法校验失败，已取消安装。" >&2
+    exit 1
+  fi
 
   install -d -m 700 "$LIB_DIR" "$BASE_DIR"
   # 先装共享库与 watchdog，最后装入口 sbm

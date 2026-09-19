@@ -19,7 +19,7 @@ set -eEuo pipefail
 #   mtp_ip_mode   监听模式 v4 / v6 / dual（可选，默认 v4）
 ###############################################################################
 
-SCRIPT_VERSION="1.5.7"
+SCRIPT_VERSION="1.5.8"
 
 # MTG GO 版本与校验：上游 jyucoeng/singbox-tools 的 Go 构建镜像
 MTP_WORKDIR="/opt/mtproxy"
@@ -28,6 +28,14 @@ MTP_CONF="${MTP_WORKDIR}/go.conf"
 MTP_LOG="${MTP_WORKDIR}/mtp.log"
 MTP_SERVICE="mtp"
 MTP_DOWNLOAD_BASE="https://github.com/jyucoeng/singbox-tools/releases/download/Go-Rust"
+# MTP 供应链（H-3）：锁定上游 Go-Rust Release 的 mtg-go 资产并 pin SHA256，
+# 下载后完整校验才落盘（与 sing-box/cloudflared 强校验模型对齐）。
+# 如需覆盖（如上游重新构建），可用环境变量 MTP_SHA256_amd64/MTP_SHA256_arm64 显式指定。
+MTP_MTG_VERSION="Go-Rust"
+declare -A MTP_SHA256=(
+  [amd64]="3653d6a1f47bd51255aa4aebed9ab2197261ad4d2f5954c7a57ef67c610563cf"
+  [arm64]="3a03bc716189306a5a697a803285c8fd96ca45069d55178be26e999c6e95768c"
+)
 # 参考实现内置伪装域名（上游生成器同款列表）
 MTP_FAKE_DOMAINS=("www.apple.com" "www.microsoft.com" "www.amazon.com" "www.bing.com" "www.mozilla.org")
 
@@ -97,6 +105,20 @@ download_file() {
     wget -qO "$out" "$url"
   else
     mtp_fatal "需要安装 curl 或 wget 才能下载 MTProxy 二进制。"
+  fi
+}
+
+# H-3：计算文件 SHA256（优先 sha256sum，其次 shasum/openssl）
+mtp_sha256() {
+  local target="$1"
+  if command_exists sha256sum; then
+    sha256sum "${target}" | awk '{print $1}'
+  elif command_exists shasum; then
+    shasum -a 256 "${target}" | awk '{print $1}'
+  elif command_exists openssl; then
+    openssl dgst -sha256 "${target}" | awk '{print $NF}'
+  else
+    return 1
   fi
 }
 
@@ -208,7 +230,7 @@ mtp_tg_secret() {
 }
 
 mtp_install_binary() {
-  local arch mtg_arch bin_url bin_tmp
+  local arch mtg_arch bin_url bin_tmp expected actual override_var
   arch="$(uname -m)"
   case "${arch}" in
   x86_64 | amd64) mtg_arch="amd64" ;;
@@ -218,6 +240,23 @@ mtp_install_binary() {
     return 1
     ;;
   esac
+
+  # H-3：锁定 Go-Rust Release 的 mtg-go 并强校验 SHA256（fail-closed）后才落盘。
+  # 上游为 dev 构建、发布即重建，故提供 MTP_ALLOW_RUNTIME_VERIFY=1 降级为仅"可执行"校验
+  # （与 cloudflared 的 CLOUDFLARED_ALLOW_RUNTIME_VERIFY 模型一致），并输出显著告警。
+  override_var="MTP_SHA256_${mtg_arch}"
+  if [ -n "${!override_var:-}" ]; then
+    expected="${!override_var}"
+  else
+    expected="${MTP_SHA256[${mtg_arch}]:-}"
+  fi
+  if [ "${MTP_ALLOW_RUNTIME_VERIFY:-0}" = "1" ]; then
+    mtp_print_warn "MTP_ALLOW_RUNTIME_VERIFY=1：跳过 SHA256 强校验，仅验证可执行性（供应链风险自担）。"
+    expected=""
+  elif [ -z "${expected}" ]; then
+    mtp_print_err "缺少 mtg-go(${mtg_arch}) 的 SHA256 校验值（可设置 MTP_SHA256_${mtg_arch}），拒绝安装。"
+    return 1
+  fi
 
   if [ -x "${MTP_BIN_DIR}/mtg-go" ] && "${MTP_BIN_DIR}/mtg-go" --version >/dev/null 2>&1; then
     mtp_print_info "已存在可用的 mtg-go 二进制，跳过下载。"
@@ -232,6 +271,18 @@ mtp_install_binary() {
     rm -f "${bin_tmp}"
     mtp_print_err "下载失败：${bin_url}"
     return 1
+  fi
+  if [ -n "${expected}" ]; then
+    actual="$(mtp_sha256 "${bin_tmp}")" || {
+      rm -f "${bin_tmp}"
+      mtp_print_err "无法计算 mtg-go 校验值（需 sha256sum 或 shasum/openssl），已放弃安装。"
+      return 1
+    }
+    if [ "${actual}" != "${expected}" ]; then
+      rm -f "${bin_tmp}"
+      mtp_print_err "mtg-go 下载校验不匹配，已拒绝安装（期望 ${expected}，实际 ${actual}）。"
+      return 1
+    fi
   fi
   chmod 0755 "${bin_tmp}"
   if ! "${bin_tmp}" --version >/dev/null 2>&1; then
@@ -280,6 +331,10 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+    # M3：mtg-go 的 simple-run 要求密钥作为进程参数（无环境变量形式），unit 内嵌（存量）密钥。
+    # 收紧为 0600 防止本机任意读；残余风险：命令行/进程列表/日志可见，勿与不可信用户共享主机，
+    # 或改用支持从环境读取密钥的 mtg 实现。
+    chmod 0600 "/etc/systemd/system/${MTP_SERVICE}.service"
     systemctl daemon-reload
     systemctl enable "${MTP_SERVICE}" >/dev/null 2>&1 || true
     systemctl restart "${MTP_SERVICE}"
@@ -298,7 +353,9 @@ depend() {
     need net
 }
 EOF
-    chmod +x "/etc/init.d/${MTP_SERVICE}"
+    # M3：init 脚本同样内嵌密钥，收紧为 0700（保留 root 执行位供 rc-update/rc-service 识别，
+    # 同时禁止其他用户读取）；残余风险：命令行/进程列表可见。
+    chmod 0700 "/etc/init.d/${MTP_SERVICE}"
     rc-update add "${MTP_SERVICE}" default >/dev/null 2>&1 || true
     rc-service "${MTP_SERVICE}" restart
   else
@@ -372,7 +429,7 @@ mtp_status() {
 
 # 安装/更新主流程
 mtp_install() {
-  local port domain secret ip_mode
+  local port domain secret ip_mode old_port
 
   require_root
   detect_init_system

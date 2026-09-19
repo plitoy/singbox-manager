@@ -9,20 +9,23 @@ umask 077
 extract_public_ip() {
   local raw="$1" m ip
   [ -n "${raw}" ] || return 1
-  raw="$(printf '%s' "${raw}" | tr -d '\r\n\t ')"
-  if is_ip_address "${raw}"; then
+  # L5：仅去除 CR/LF（多行响应）并裁剪首尾空白，保留内部空白分隔符——
+  # 原先 tr -d ' ' 会把空格分隔的多个 IP（如 "1.2.3.4 5.6.7.8"）拼接成
+  # "1.2.3.45.6.7.8" 这类非法地址，随后被 grep 截段误取成错误 IP。
+  raw="$(printf '%s' "${raw}" | tr -d '\r\n' | sed -e 's/^[[:space:]]\{1,\}//' -e 's/[[:space:]]\{1,\}$//')"
+  if [ -n "${raw}" ] && is_ip_address "${raw}"; then
     printf '%s' "${raw}"
     return 0
   fi
   if command_exists grep; then
     m="$(printf '%s' "${raw}" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}|(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4})' | grep -vE '^(0\.0\.0\.0|::|0::|::0|127\.)' | head -1 2>/dev/null || true)"
-    if is_ip_address "${m}"; then
+    if [ -n "${m}" ] && is_ip_address "${m}"; then
       printf '%s' "${m}"
       return 0
     fi
   fi
   ip="$(printf '%s' "${raw}" | jq -r '.ip // .IpAddr // .ipaddr // .address // .data // empty' 2>/dev/null | tr -d '\r\n' || true)"
-  if is_ip_address "${ip}" && ! is_private_ip "${ip}"; then
+  if [ -n "${ip}" ] && is_ip_address "${ip}" && ! is_private_ip "${ip}"; then
     printf '%s' "${ip}"
     return 0
   fi
@@ -147,6 +150,9 @@ probe_tcp_port() {
   local timeout_s="${3:-2}"
   [ -n "${port}" ] || return 1
   [[ "${port}" =~ ^[0-9]+$ ]] || return 1
+  # 防御性校验（H-2）：host 仅允许域名/IP 合法字符（IPv6 含冒号/括号），
+  # 杜绝 ';'、命令替换、路径穿越等注入；非法时直接失败，绝不拼接进 /dev/tcp。
+  [[ "${host}" =~ ^[A-Za-z0-9.:\[\]-]+$ ]] || return 1
   if command_exists timeout; then
     timeout "${timeout_s}" bash -c "exec 3<>/dev/tcp/${host}/${port}" >/dev/null 2>&1
   else

@@ -221,11 +221,16 @@ auto_add_vless_argo() {
   ws_path="${ENV_WS_PATH:-$(random_ws_path)}"
   argo_token="$(env_var "agk")"
   endpoint_domain="$(env_var "agn")"
-  if [ -n "$argo_token" ] && [ -n "$endpoint_domain" ]; then
+  if [ -n "$argo_token" ] && [ -n "$endpoint_domain" ] && is_safe_domain "${endpoint_domain}"; then
     argo_mode="token"
   else
     if [ -n "$argo_token" ] || [ -n "$endpoint_domain" ]; then
-      print_warn "Argo 固定隧道需要同时提供 agn（域名）和 agk（Token），已回退临时隧道。"
+      # 与交互路径一致：agn 必须通过域名白名单，防止异常值入库后被 watchdog 消费
+      if [ -n "$endpoint_domain" ] && ! is_safe_domain "${endpoint_domain}"; then
+        print_warn "Argo 固定隧道 agn=${endpoint_domain} 域名格式无效，已回退临时隧道。"
+      else
+        print_warn "Argo 固定隧道需要同时提供 agn（域名）和 agk（Token），已回退临时隧道。"
+      fi
     fi
     argo_mode="temp"
     argo_token=""
@@ -377,6 +382,10 @@ auto_install() {
   local -a specs=()
   local ENV_NAME ENV_UUID ENV_PASSWD
   local ENV_VL_SNI ENV_TU_SNI ENV_ANY_SNI ENV_HY_SNI ENV_WS_HOST ENV_WS_PATH ENV_CDN_HOST
+  local ENV_WS_MODE ENV_CDN_PORT
+  local ENV_ARGO_CDN_HOST ENV_ARGO_CDN_PORT
+  local ENV_WS_CDN_CF_HOST ENV_WS_CDN_CF_PT ENV_WS_CDN_SNI
+  local ENV_WS_CDN_VLESS_CF_HOST ENV_WS_CDN_VLESS_CF_PT ENV_WS_CDN_VLESS_SNI
   local ENV_SOCKS5_USER ENV_SOCKS5_PASS
 
   init_storage

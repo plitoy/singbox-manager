@@ -296,6 +296,14 @@ start_argo_node() {
     TUNNEL_TOKEN="${token}" nohup "${CLOUDFLARED_BIN}" tunnel --no-autoupdate --protocol http2 --edge-ip-version "${edge_ip}" run \
       >>"${log_file}" 2>&1 &
     write_pid_file "${pid_file}" "$!"
+    # L13：token 模式下 cloudflared 全程静默（无 trycloudflare 域名可展示），
+    # 对 endpoint_domain:443 快速探测一次给安装者即时反馈；刚启动时公网解析未就绪
+    # 属正常，仅告警不阻断。
+    if domain="$(node_value "$tag" "endpoint_domain" 2>/dev/null || true)" && [ -n "${domain}" ] && probe_tcp_port "${domain}" 443 3; then
+      print_ok "Argo 固定隧道已启动（${domain}:443 可达）。"
+    else
+      print_warn "Argo 固定隧道进程已拉起${domain:+（域名 ${domain}）}，尚未通过本地 443 探测——公网发布可能需要数十秒，稍后可运行 status 复核。"
+    fi
     return 0
   fi
 

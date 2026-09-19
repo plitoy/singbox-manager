@@ -242,8 +242,10 @@ install_cloudflared_bin() {
         verify_mode="sha256"
         print_warn "GitHub API 不可用，回退固定版本 cloudflared ${version}（完整 SHA256 校验）。"
       elif [ "${CLOUDFLARED_ALLOW_RUNTIME_VERIFY:-0}" = "1" ]; then
-        # 显式允许 runtime 降级（默认关闭）：仍需保证固定表有该版本 digest 才可完整校验
-        if [ -n "${CLOUDFLARED_SHA256[$arch]:-}" ]; then
+        # 显式允许 runtime 降级（默认关闭）：仅当解析版本恰好等于固定回退版本、且固定表
+        # 有该版本 digest 时才可走完整校验；否则**直接**降级 runtime 模式 ——
+        # 绝不用"固定回退版本的 digest"去校验其他版本文件（M2 旧逻辑误用 digest 必失败）。
+        if [ "${version}" = "${CLOUDFLARED_FALLBACK_VERSION:-}" ] && [ -n "${CLOUDFLARED_SHA256[$arch]:-}" ]; then
           expected="${CLOUDFLARED_SHA256[$arch]}"
           verify_mode="sha256"
           print_warn "GitHub API 不可用，已用固定版本表 digest 完整校验 cloudflared ${version}。"
