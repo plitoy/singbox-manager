@@ -97,7 +97,10 @@ get_public_ip() {
       mkdir -p "${probe_tmp}"
       _i=0
       for _u in "${probe_urls[@]}"; do
-        (curl -fsS --max-time 5 ${flag} "$_u" 2>/dev/null | tr -d '\r\n') >"${probe_tmp}/${_i}" &
+        # 子 shell 继承 ERR trap：内部 curl|tr 管线在低可达源失败时会打出
+        # "命令执行失败: node-cmd.sh:38" 红字噪音(8b77816 只兜了缓存写)。
+        # 管线尾部补 || true,让失败静默收敛(本探测本就容忍部分源失败)。
+        (curl -fsS --max-time 5 ${flag} "$_u" 2>/dev/null | tr -d '\r\n' || true) >"${probe_tmp}/${_i}" &
         _i=$((_i + 1))
       done
       wait || true
