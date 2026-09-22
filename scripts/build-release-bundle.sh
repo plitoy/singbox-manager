@@ -30,7 +30,12 @@ chmod 0755 "${PACKAGE_DIR}/sb.sh" "${PACKAGE_DIR}/mtp.sh" "${PACKAGE_DIR}/script
 # 归一化 tar 元数据并用 gzip -n 去除时间戳，保证同一内容构建出字节级一致的 bundle。
 # --format=gnu：显式钉死归档格式（GNU tar 1.34 前默认 gnu；1.35 起部分发行版默认
 # 改为 posix/pax），否则跨平台（MSYS 与 CI ubuntu）会因默认格式不同而产出不同字节。
+# --mode='go-w'：MSYS/Git-Bash 的 chmod 是假权限（可写文件一律假到 0777），
+# 会随文件进归档（v1.5.8 审查 L-1）；此处统一剥掉组/其他写位——Linux 下对已
+# chmod 好的 0644/0755 无影响，Windows 下 0777 归一为 0755。安装期权限由
+# install.sh 的 install -m/umask 077 最终收敛，归档模式仅影响浏览及临时解包窗口。
 tar --format=gnu --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+  --mode='go-w' \
   -cf - -C "${DIST_DIR}" "singbox-manager-${VERSION}" | gzip -n >"${DIST_DIR}/${PACKAGE_NAME}"
 
 (

@@ -21,17 +21,26 @@ set -eEuo pipefail
 
 SCRIPT_VERSION="1.5.8"
 
+# bash>=4.0 前置守卫：MTP_SHA256 关联数组与 ${!var} 间接引用在 bash 3.x 不可用，
+# 尽早失败并给出可读报错（sb.sh 侧同款要求，见 require_bash4）。
+if [ -z "${BASH_VERSION:-}" ] || [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+  echo "需要 bash 4.0 及以上版本（当前：${BASH_VERSION:-未知}）。" >&2
+  exit 1
+fi
+
 # MTG GO 版本与校验：上游 jyucoeng/singbox-tools 的 Go 构建镜像
 MTP_WORKDIR="/opt/mtproxy"
 MTP_BIN_DIR="${MTP_WORKDIR}/bin"
 MTP_CONF="${MTP_WORKDIR}/go.conf"
 MTP_LOG="${MTP_WORKDIR}/mtp.log"
 MTP_SERVICE="mtp"
-MTP_DOWNLOAD_BASE="https://github.com/jyucoeng/singbox-tools/releases/download/Go-Rust"
+# 上游资产以 "evergreen" tag(Go-Rust)承载，换 tag 时只改 MTP_MTG_VERSION 一处，
+# 下载 URL 由它拼出；tag 资产重建时需同步更新下方 MTP_SHA256 或按注释覆盖。
+MTP_MTG_VERSION="Go-Rust"
+MTP_DOWNLOAD_BASE="https://github.com/jyucoeng/singbox-tools/releases/download/${MTP_MTG_VERSION}"
 # MTP 供应链（H-3）：锁定上游 Go-Rust Release 的 mtg-go 资产并 pin SHA256，
 # 下载后完整校验才落盘（与 sing-box/cloudflared 强校验模型对齐）。
 # 如需覆盖（如上游重新构建），可用环境变量 MTP_SHA256_amd64/MTP_SHA256_arm64 显式指定。
-MTP_MTG_VERSION="Go-Rust"
 declare -A MTP_SHA256=(
   [amd64]="3653d6a1f47bd51255aa4aebed9ab2197261ad4d2f5954c7a57ef67c610563cf"
   [arm64]="3a03bc716189306a5a697a803285c8fd96ca45069d55178be26e999c6e95768c"

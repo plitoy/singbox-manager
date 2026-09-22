@@ -8,7 +8,7 @@ REPO_NAME="singbox-manager"
 PROJECT_VERSION="v1.5.8"
 PACKAGE_NAME="singbox-manager-v1.5.8.tar.gz"
 # 发布流程：scripts/build-release-bundle.sh 构建可复现 bundle，其 SHA256 与此处一致
-PACKAGE_SHA256="f4c92266ee241b0ef22eeb5c02394b7f4ea3c6c970abfb32c1974012b49913b5"
+PACKAGE_SHA256="96994fc873394afe7a50f485c070d3f86b99193fa2d9412f76471952a1c9343c"
 PACKAGE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${PROJECT_VERSION}/${PACKAGE_NAME}"
 
 INSTALL_BIN="/usr/local/bin/sbm"
