@@ -503,20 +503,23 @@ assert_eval_true "B1 tuic_zero_rtt=0 关闭 0-RTT" 'jq -e ".zero_rtt_handshake =
 rm -f "${tmpcfg}"
 
 # --- B3：TCP keepalive 显式化（默认 30s；interval 可调；非法回退） ---
+# 1.13.0+ schema：tcp_keep_alive 为字符串型间隔（旧 bool+interval 双字段已废弃），
+# 由环境变量 tcp_keep_alive_interval 驱动，非法值回退 30s。
 tmpcfg="$(mktemp "${TEST_ROOT}/cfg.XXXXXX")"
 render_inbound_for_tag nws-tune >"${tmpcfg}" 2>/dev/null
-assert_eval_true "B3 WS-TLS 默认 keepalive=true/30s" 'jq -e ".tcp_keep_alive == true and .tcp_keep_alive_interval == \"30s\"" "${tmpcfg}" >/dev/null'
+assert_eval_true "B3 WS-TLS 默认 keepalive=\"30s\"且无独立 interval 键" 'jq -e ".tcp_keep_alive == \"30s\" and (has(\"tcp_keep_alive_interval\") | not)" "${tmpcfg}" >/dev/null'
 tcp_keep_alive_interval=15s render_inbound_for_tag nws-tune >"${tmpcfg}" 2>/dev/null
-assert_eval_true "B3 tcp_keep_alive_interval 可调" 'jq -e ".tcp_keep_alive_interval == \"15s\"" "${tmpcfg}" >/dev/null'
+assert_eval_true "B3 tcp_keep_alive 间隔可调 15s" 'jq -e ".tcp_keep_alive == \"15s\"" "${tmpcfg}" >/dev/null'
 tcp_keep_alive_interval=abc render_inbound_for_tag nws-tune >"${tmpcfg}" 2>/dev/null
-assert_eval_true "B3 非法间隔回退 30s" 'jq -e ".tcp_keep_alive_interval == \"30s\"" "${tmpcfg}" >/dev/null'
+assert_eval_true "B3 非法间隔回退 30s" 'jq -e ".tcp_keep_alive == \"30s\"" "${tmpcfg}" >/dev/null'
 rm -f "${tmpcfg}"
 
 # --- B4/4.2：DNS 块（默认开启双源加密 DNS；dns_servers=off/none 整体关闭；
 #   strategy 跟随 ip_version；非法 scheme 不渲染） ---
 # 注意：env 赋值一律用“前缀+命令”形式，避免 eval 在顶层残留变量污染后续 render_config
-assert_eval_true "B4 dns_servers 空 => 默认双源加密 DNS" '( render_dns_object ) | jq -e "(.dns.servers | length) == 2 and .dns.independent_cache == true and .dns.disable_cache == false and .dns.cache_capacity == 4096 and .dns.strategy == \"prefer_ipv4\""'
-assert_eval_true "B4 双源显式渲染 dns 块" '( dns_servers="https://1.1.1.1/dns-query,https://dns.google/resolve" render_dns_object ) | jq -e "(.dns.servers | length) == 2 and .dns.strategy == \"prefer_ipv4\""'
+# 1.14.0 起服务器数含 bootstrap（域名型 server 的 domain_resolver），independent_cache 已移除
+assert_eval_true "B4 dns_servers 空 => 默认双源加密 DNS+bootstrap" '( render_dns_object ) | jq -e "(.dns.servers | length) == 3 and (.dns | has(\"independent_cache\") | not) and .dns.disable_cache == false and .dns.cache_capacity == 4096 and .dns.strategy == \"prefer_ipv4\""'
+assert_eval_true "B4 双源显式渲染 dns 块(含 bootstrap)" '( dns_servers="https://1.1.1.1/dns-query,https://dns.google/resolve" render_dns_object ) | jq -e "(.dns.servers | length) == 3 and .dns.strategy == \"prefer_ipv4\""'
 assert_eval_true "B4 ip_version=6 => strategy ipv4_and_ipv6" '( ip_version=6 render_dns_object ) | jq -e ".dns.strategy == \"ipv4_and_ipv6\""'
 assert_eval_true "B4 dns_servers=off 整体关闭" '( dns_servers=off render_dns_object ) | jq -e "has(\"dns\") | not"'
 assert_eval_true "B4 dns_servers=none 整体关闭" '( dns_servers=none render_dns_object ) | jq -e "has(\"dns\") | not"'
@@ -729,17 +732,18 @@ assert_eval_true "WS inbound 路径生效" 'jq -e ".inbounds[] | select(.transpo
 assert_eval_true "SOCKS5 inbound 用户生效" 'jq -e ".inbounds[] | select(.type == \"socks\" and .users[0].username == \"u1\")" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "vless 使用指定 uuid" 'jq -e ".inbounds[].users[]? | select(.uuid == \"11111111-2222-3333-4444-555555555555\")" "${CONFIG_FILE}" >/dev/null'
 assert_eq "config 日志级别默认 warn" "warn" "$(jq -r '.log.level' "${CONFIG_FILE}")"
-# 1.1/1.2/4.1：cache_file 连接缓存、clash_api 可观测面、route sniff 默认落盘
+# 1.1/1.2/4.1：cache_file 连接缓存、clash_api 可观测面（route.sniff 已于 sing-box 1.13 移除）
 assert_eval_true "cache_file 连接缓存默认开启" 'jq -e ".experimental.cache_file.enabled == true and (.experimental.cache_file.path | endswith(\"cache.db\"))" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "clash_api 可观测面默认开启(127.0.0.1)" 'jq -e ".experimental.clash_api.external_controller | startswith(\"127.0.0.1:\")" "${CONFIG_FILE}" >/dev/null'
-assert_eval_true "route sniff 默认开启" 'jq -e ".route.sniff.enabled == true and .route.sniff.override_destination == true" "${CONFIG_FILE}" >/dev/null'
+# route.sniff 在 sing-box 1.13 移除，v1.5.6 起不再渲染（渲染出来会被 1.13+ 的 check 直接拒绝）
+assert_eval_true "route 不含已废弃的 sniff 块" 'jq -e "(.route | has(\"sniff\") | not)" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "vless TFO 默认开" 'jq -e ".inbounds[] | select(.type == \"vless\" and .tcp_fast_open == true)" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "anytls TFO 默认开" 'jq -e ".inbounds[] | select(.type == \"anytls\" and .tcp_fast_open == true)" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "socks TFO 默认开" 'jq -e ".inbounds[] | select(.type == \"socks\" and .tcp_fast_open == true)" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "WS inbound 全局带 0-RTT" 'jq -e ".inbounds[] | select(.transport.type? == \"ws\" and .transport.max_early_data == 2048 and .transport.early_data_header_name == \"Sec-WebSocket-Protocol\")" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "HY2 限速 100/300 写入" 'jq -e ".inbounds[] | select(.type == \"hysteria2\" and .up_mbps == 100 and .down_mbps == 300)" "${CONFIG_FILE}" >/dev/null'
 assert_eval_true "TUIC inbound 默认 0-RTT" 'jq -e ".inbounds[] | select(.type == \"tuic\" and .zero_rtt_handshake == true)" "${CONFIG_FILE}" >/dev/null'
-assert_eval_true "socks inbound 默认 keepalive 30s" 'jq -e ".inbounds[] | select(.type == \"socks\" and .tcp_keep_alive == true and .tcp_keep_alive_interval == \"30s\")" "${CONFIG_FILE}" >/dev/null'
+assert_eval_true "socks inbound 默认 keepalive \"30s\"" 'jq -e ".inbounds[] | select(.type == \"socks\" and .tcp_keep_alive == \"30s\" and (has(\"tcp_keep_alive_interval\") | not))" "${CONFIG_FILE}" >/dev/null'
 # stub 进程存活仅对"纯进程托管"环境有意义：systemd/openrc 下 sing-box 由系统管理器
 # 托管且不写 PID 文件（GitHub 托管 runner 即 systemd 环境），断言按环境跳过。
 if ! systemd_available && ! openrc_available; then
@@ -790,8 +794,8 @@ assert_eval_false "check 失败 render_config 拒写" '( SINGBOX_BIN="/bin/false
 assert_eval_true "check 失败保留旧配置" 'cmp -s "${CONFIG_FILE}" "${TEST_ROOT}/config.before"'
 
 # B4/4.2：DNS 块 e2e（默认 config 含双源加密 DNS；显式 dns_servers 渲染；off 关闭后还原）
-assert_eval_true "默认 config 含双源加密 DNS 块" 'jq -e "(.dns.servers | length) == 2 and .dns.independent_cache == true" "${CONFIG_FILE}" >/dev/null'
-assert_eval_true "DNS 显式单源渲染 dns 块" 'dns_servers="https://1.1.1.1/dns-query" render_config; jq -e "(.dns.servers | length) == 1 and .dns.strategy == \"prefer_ipv4\"" "${CONFIG_FILE}" >/dev/null'
+assert_eval_true "默认 config 含双源加密 DNS 块+bootstrap" 'jq -e "(.dns.servers | length) == 3 and (.dns | has(\"independent_cache\") | not)" "${CONFIG_FILE}" >/dev/null'
+assert_eval_true "DNS 显式单源渲染 dns 块(含 bootstrap)" 'dns_servers="https://1.1.1.1/dns-query" render_config; jq -e "(.dns.servers | length) == 2 and .dns.strategy == \"prefer_ipv4\"" "${CONFIG_FILE}" >/dev/null'
 dns_servers="" render_config
 assert_eval_true "DNS 关闭(off)后还原默认双源" 'dns_servers=off render_config; jq -e "has(\"dns\") | not" "${CONFIG_FILE}" >/dev/null'
 dns_servers="" render_config

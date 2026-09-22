@@ -152,7 +152,10 @@ probe_tcp_port() {
   [[ "${port}" =~ ^[0-9]+$ ]] || return 1
   # 防御性校验（H-2）：host 仅允许域名/IP 合法字符（IPv6 含冒号/括号），
   # 杜绝 ';'、命令替换、路径穿越等注入；非法时直接失败，绝不拼接进 /dev/tcp。
-  [[ "${host}" =~ ^[A-Za-z0-9.:\[\]-]+$ ]] || return 1
+  # 括号字符必须以"[]"开头书写（POSIX 括号表达式规则）：写成 [\[\]] 一类含转义的
+  # 形式会经 bash 词法剥离反斜杠后被 regcomp 判为 [:...:] 类构造，整条正则失效，
+  # 连 127.0.0.1 都被拒绝（v1.5.8 实测回归，smoke P3 捕获）。勿改写成 [\[...\]]。
+  [[ "${host}" =~ ^[][A-Za-z0-9.:-]+$ ]] || return 1
   if command_exists timeout; then
     timeout "${timeout_s}" bash -c "exec 3<>/dev/tcp/${host}/${port}" >/dev/null 2>&1
   else
