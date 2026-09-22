@@ -516,4 +516,14 @@ ensure_singbox_ready() {
     print_info "systemd unit 缺失，重建服务单元。"
     create_systemd_units
   fi
+  # F-06：OpenRC init 脚本缺失时同样补建。与 F-05 对称：当 sing-box/cloudflared
+  # 已预置（如二进制旁路安装/install_core 未走）时，ensure_singbox_ready 不会触发
+  # install_core，而 create_openrc_units 只在 install_core 里调用——缺失的
+  # /etc/init.d/singbox-manager 会让 start_service 的 rc-service restart 报
+  # "service does not exist" 令 rep/ins 整体回滚（Alpine/OpenRC 实测阻断）。
+  if openrc_available && [ ! -f "${OPENRC_SERVICE_FILE}" ]; then
+    print_info "OpenRC init 脚本缺失，重建服务单元。"
+    create_openrc_units
+    create_cron_watchdog
+  fi
 }
