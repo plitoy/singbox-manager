@@ -3,7 +3,7 @@ set -eEuo pipefail
 
 umask 077
 
-REPO_OWNER="hynize"
+REPO_OWNER="plitoy"
 REPO_NAME="singbox-manager"
 PROJECT_VERSION="v1.5.8"
 PACKAGE_NAME="singbox-manager-v1.5.8.tar.gz"
