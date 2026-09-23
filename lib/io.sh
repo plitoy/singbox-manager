@@ -58,7 +58,7 @@ url_encode() {
 }
 
 url_encode_many() {
-  jq -nr --args '$ARGS.positional[] | @uri' "$@"
+  jq -nr --args -- '$ARGS.positional[] | @uri' "$@"
 }
 
 generate_uuid() {
