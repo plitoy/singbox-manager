@@ -210,7 +210,6 @@
         <div class="pgrid">
           <div class="pitem"><label>VLESS-Reality <span class="pill">vlrt</span></label><input type="text" class="port-input" id="vlrt" placeholder="如 2083，或点 🎲 随机" inputmode="numeric"></div>
           <div class="pitem"><label>AnyTLS <span class="pill">anypt</span></label><input type="text" class="port-input" id="anypt" placeholder="如 5443，或点 🎲 随机" inputmode="numeric"></div>
-          <div class="pitem"><label>SOCKS5 <span class="pill">socks5pt</span></label><input type="text" class="port-input" id="socks5pt" placeholder="如 31017，或点 🎲 随机" inputmode="numeric"></div>
           <div class="pitem"><label>TUIC v5 <span class="pill">tupt</span></label><input type="text" class="port-input" id="tupt" placeholder="如 10443，或点 🎲 随机" inputmode="numeric"></div>
           <div class="pitem"><label>Hysteria2 <span class="pill">hypt</span></label><input type="text" class="port-input" id="hypt" placeholder="如 11443，或点 🎲 随机" inputmode="numeric"></div>
         </div>
@@ -392,7 +391,11 @@
       </section>
 
       <section class="card">
-        <h2>⑥ SOCKS5 账号 <span class="tip">仅在①填写 socks5pt 后生效</span></h2>
+        <h2>⑥ SOCKS5 账号 <span class="tip">填写 socks5pt 后生效</span></h2>
+        <div class="row">
+          <label>SOCKS5 端口 <span class="pill">socks5pt</span></label>
+          <input type="text" class="port-input" id="socks5pt" placeholder="如 31017，或点 🎲 随机" inputmode="numeric">
+        </div>
         <div class="row">
           <label>SOCKS5 用户名 <span class="pill">socks5_username</span></label>
           <input type="text" id="socks5-username" placeholder="默认 user">

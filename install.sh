@@ -1,14 +1,49 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# shellcheck shell=bash
+# Alpine 等最小化系统自举：若当前 shell 不是 bash（例如纯净 Alpine 的 ash / sh install.sh），
+# 先补齐 bash/curl，再在 bash 下重新执行本脚本，确保其余部分（仅 bash 兼容）正常解析运行。
+# 已是 bash 时（如 ubuntu bash -c 或 bash <(curl ...)）直接跳过，避免对进程替换 fd 二次读取。
+if [ -z "${SBM_INSTALL_BOOTSTRAPPED:-}" ] && [ -z "${BASH_VERSION:-}" ]; then
+  SBM_INSTALL_BOOTSTRAPPED=1
+  export SBM_INSTALL_BOOTSTRAPPED
+
+  has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+  if ! has_cmd bash; then
+    if has_cmd apk; then
+      echo "[sbm] 检测到 Alpine，正在安装 bash ..."
+      apk add --no-cache bash >/dev/null 2>&1 || true
+    fi
+    if ! has_cmd bash; then
+      echo "缺少 bash，请先安装：apk add bash（或其它发行版对应方式）" >&2
+      exit 1
+    fi
+  fi
+
+  if ! has_cmd curl && ! has_cmd wget; then
+    if has_cmd apk; then
+      echo "[sbm] 检测到 Alpine，正在安装 curl ..."
+      apk add --no-cache curl >/dev/null 2>&1 || true
+    fi
+    if ! has_cmd curl && ! has_cmd wget; then
+      echo "缺少 curl/wget，请先安装。Alpine: apk add curl" >&2
+      exit 1
+    fi
+  fi
+
+  exec bash "$0" "$@"
+fi
+
 set -eEuo pipefail
 
 umask 077
 
 REPO_OWNER="plitoy"
 REPO_NAME="singbox-manager"
-PROJECT_VERSION="v1.5.8"
-PACKAGE_NAME="singbox-manager-v1.5.8.tar.gz"
+PROJECT_VERSION="v1.5.9"
+PACKAGE_NAME="singbox-manager-v1.5.9.tar.gz"
 # 发布流程：scripts/build-release-bundle.sh 构建可复现 bundle，其 SHA256 与此处一致
-PACKAGE_SHA256="3c8b891d0ee5c95abab925c51eb66120b84d7c3287fc59d9b8dccdb7ab78119a"
+PACKAGE_SHA256="7d047ed1224dc0fba43ba3c7da8ca9cc51584b2631c55bc63b2d0f48526294da"
 PACKAGE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${PROJECT_VERSION}/${PACKAGE_NAME}"
 
 INSTALL_BIN="/usr/local/bin/sbm"
