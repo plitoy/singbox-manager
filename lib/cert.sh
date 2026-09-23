@@ -81,6 +81,45 @@ ensure_tls_material() {
   printf '%s|%s' "$cert_file" "$key_file"
 }
 
+# 判断给定证书是否覆盖目标主机名：subject CN 或 SAN（DNS/IP）精确匹配，
+# 支持 DNS 通配证书（DNS:*.example.com 匹配 foo.example.com）。
+# 用于分享链接跳过校验判定：证书主体不覆盖链接 SNI 时（如自定义证书 +
+# 伪装 SNI），客户端对证书的常规校验必然失败，必须追加 insecure/pinSHA256。
+cert_covers_host() {
+  local cert_file="$1" host="$2"
+  [ -f "${cert_file}" ] || return 1
+  [ -n "${host}" ] || return 1
+  local cn san entry base
+  cn="$(openssl x509 -in "${cert_file}" -noout -subject 2>/dev/null | sed -n 's/.*CN *= *\([^,]\{1,\}\).*/\1/p' || true)"
+  [ -n "${cn}" ] && [ "${cn}" = "${host}" ] && return 0
+  san="$(openssl x509 -in "${cert_file}" -noout -ext subjectAltName 2>/dev/null | grep -oE '(DNS|IP Address):[^, ]+' || true)"
+  while IFS= read -r entry; do
+    [ -n "${entry}" ] || continue
+    entry="${entry#*:}"
+    [ "${entry}" = "${host}" ] && return 0
+    case "${entry}" in
+    "*."*)
+      base="${entry#\*.}"
+      [ -n "${base}" ] && [ "${host}" != "${base}" ] && [[ "${host}" == *".${base}" ]] && return 0
+      ;;
+    esac
+  done <<<"${san}"
+  return 1
+}
+
+# 分享链接是否需要跳过证书校验（追加 insecure/pinSHA256/allowInsecure）：
+#   - 自签（self-signed）→ 是；
+#   - 自定义证书且本机配置了证书文件 → 证书不覆盖目标 SNI 时是（自定义证书 +
+#     伪装 SNI 部署，客户端常规校验必然失败）；证书覆盖目标主机名为否；
+#   - 自定义/无证书文件（未配置本地证书的受信部署）→ 否（无据可依，保持旧行为）。
+# 输出 0=需要跳过校验（需加 insecure），1=不需要。
+cert_needs_insecure() {
+  local cert_mode="$1" cert_file="$2" host="$3"
+  [ "${cert_mode}" = "self-signed" ] && return 0
+  [ -n "${cert_file}" ] && [ -f "${cert_file}" ] || return 1
+  ! cert_covers_host "${cert_file}" "${host}"
+}
+
 cert_fingerprint() {
   local cert_file="$1"
   [ -f "${cert_file}" ] || return 1

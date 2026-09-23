@@ -142,7 +142,9 @@ argo_backoff_delay() {
 argo_edge_ip_version() {
   local has4 has6
   # 边缘 IP 族选择：双栈环境交给 cloudflared --edge-ip-version auto（3.2）；
-  # 单栈环境先探测 Cloudflare 同族边缘可达性，不可达则翻转族（规避运营商回程差异）。
+  # 单栈环境先探测 Cloudflare 同族边缘可达性；探测失败时只在本机实际具备的
+  # IP 族内判断，绝不可翻转到本机没有的族（IPv4-only 主机回退 IPv6 必现
+  # "network is unreachable"，v1.5.8 实测根因）。
   has4=false
   has6=false
   has_public_ipv4 && has4=true
@@ -156,8 +158,8 @@ argo_edge_ip_version() {
     if probe_edge_family "4"; then
       printf '4'
     else
-      print_warn "IPv4 边缘（region1.v2.argotunnel.com）不可达，回退 IPv6 边缘。"
-      printf '6'
+      print_warn "IPv4 边缘（region1.v2.argotunnel.com）不可达，本机无 IPv6，保持 IPv4 边缘。"
+      printf '4'
     fi
     return 0
   fi
@@ -165,25 +167,38 @@ argo_edge_ip_version() {
     if probe_edge_family "6"; then
       printf '6'
     else
-      print_warn "IPv6 边缘（region1.v2.argotunnel.com）不可达，回退 IPv4 边缘。"
-      printf '4'
+      print_warn "IPv6 边缘（region1.v2.argotunnel.com）不可达，本机无 IPv4，保持 IPv6 边缘。"
+      printf '6'
     fi
     return 0
   fi
   printf 'auto'
 }
 
-# 3.2：探测 Cloudflare 边缘注册服务（region1.v2.argotunnel.com:443）在指定 IP 族的可达性。
+# 探测 Cloudflare 边缘注册服务（region1.v2.argotunnel.com:443）在指定 IP 族的可达性。
+# 该端点并非 HTTP 站点：curl -f 对待 TLS 握手失败会误判为不可达（HTTPS GET 语义错误，
+# 实际 TCP/TLS 均可达，属正常拒绝）。改为协议无关的 TCP 层连接测试：按目标族解析出
+# 地址后直接建立 TCP 连接。优先解析族内地址 + bash /dev/tcp（不依赖 nc 的 -4/-6，BusyBox
+# nc 不支持族参数）；getent 无族参数（部分 busybox）时以 curl 双保险回退。
 probe_edge_family() {
   local fam="$1"
-  command_exists curl || return 0
-  local flag
-  if [ "${fam}" = "6" ]; then
-    flag="--ipv6"
-  else
-    flag="--ipv4"
+  local ip nflag
+  # getent ahostsv4/ahostsv6 返回"族内全部地址 STREAM/PROTO"行，取首个地址
+  ip="$(getent "ahostsv${fam}" region1.v2.argotunnel.com 2>/dev/null | awk 'NR==1{print $1}' || true)"
+  if [ -n "${ip}" ]; then
+    if command_exists timeout; then
+      timeout 4 bash -c "exec 3<>/dev/tcp/${ip}/443" >/dev/null 2>&1
+    else
+      bash -c "exec 3<>/dev/tcp/${ip}/443" >/dev/null 2>&1
+    fi
+    return $?
   fi
-  curl -fsS --max-time 3 "${flag}" "https://region1.v2.argotunnel.com" >/dev/null 2>&1
+  # getent 无族参数：退化为不限族的 TCP 握手探测（仅诊断用，不影响已锁定返回族）
+  if command_exists nc; then
+    timeout 4 nc -z -w 3 region1.v2.argotunnel.com 443 >/dev/null 2>&1
+    return $?
+  fi
+  command_exists curl && curl -fsS --max-time 4 "https://region1.v2.argotunnel.com" >/dev/null 2>&1
 }
 
 cloudflared_latest_release_json() {

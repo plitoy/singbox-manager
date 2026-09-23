@@ -7,7 +7,7 @@ build_share_link() {
   local tag="$1"
   local public_ip="${2:-}"
   local protocol name port host uuid password username fp
-  local reality_server public_key short_id ws_path preferred_domain endpoint_domain host_domain tls_server cert_mode ws_mode cdn_port cdn_sni ext certificate_path
+  local reality_server public_key short_id ws_path preferred_domain endpoint_domain host_domain tls_server cert_mode ws_mode cdn_port cdn_sni ext certificate_path fp insecure_flag
 
   # 单次 jq 批量取出全部字段（nodes+secrets），替代逐字段 node_value/secret_value
   # 的多次 jq 进程（每次 sbm list/sub 对每个节点可省十次左右 jq 启动）
@@ -84,10 +84,13 @@ EOF
       printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&type=ws&host=%s&path=%s' \
         "$uuid" "$host" "$port" "${sni_enc}" "${host_enc}" "${ws_path_enc}"
     fi
-    # 自签证书固定指纹仅在直连模式有意义：客户端直连本机、面对的就是该自签证书。
-    # CDN 模式客户端面对的是前置 CDN（如 Cloudflare）边缘的公开证书，不能固定源站自签指纹，否则必然校验失败。
-    if [ "$cert_mode" = "self-signed" ] && [ "${ws_mode}" != "cdn" ]; then
-      # 自签证书固定指纹（新版 Xray/v2rayN 已拒绝 allowInsecure，改用 pinnedPeerCertSha256）；
+    # 固定指纹/跳过校验仅在直连模式有意义：客户端直连本机、面对的就是源站证书。
+    # CDN 模式客户端面对的是前置 CDN（如 Cloudflare）边缘的公开证书，不能固定源站
+    # 指纹，否则必然校验失败。
+    # 触发条件从"仅自签"扩展为"证书不覆盖链接 SNI"：自定义证书 + 伪装 SNI 的
+    # 部署同样会校验失败（v1.5.8 实测 anytls/hy2/tuic 全灭），必须一并跳过。
+    if [ "${ws_mode}" != "cdn" ] && cert_needs_insecure "$cert_mode" "$certificate_path" "${host_domain}"; then
+      # 固定指纹（新版 Xray/v2rayN 已拒绝 allowInsecure，改用 pinnedPeerCertSha256）；
       # 无证书文件（旧节点）时回退 allowInsecure=1
       fp="$(cert_fingerprint "${certificate_path}" 2>/dev/null || true)"
       if [ -n "${fp}" ]; then
@@ -107,13 +110,13 @@ EOF
     } <<EOF
 $(url_encode_many "${password}" "${name}")
 EOF
-    tls_server="$(url_encode "${tls_server}")"
-    # 自签证书：insecure=1 跳过校验；type/headerType 声明 TCP 传输，兼容主流客户端解析
-    if [ "$cert_mode" = "self-signed" ]; then
+    # 先按原文判断证书覆盖（url_encode 后再比会失败），再编码用于链接
+    if cert_needs_insecure "$cert_mode" "$certificate_path" "${tls_server}"; then
       ext="insecure=1&"
     else
       ext=""
     fi
+    tls_server="$(url_encode "${tls_server}")"
     printf 'anytls://%s@%s:%s?%ssecurity=tls&sni=%s&type=tcp&headerType=none' \
       "${password_enc}" "$host" "$port" "$ext" "$tls_server"
     printf '#%s' "${name_enc}"
@@ -129,28 +132,32 @@ EOF
       "$(url_encode "$endpoint_domain")" "$(url_encode "$endpoint_domain")" "$(url_encode "$ws_path")" "$(url_encode "$name")"
     ;;
   tuic-v5)
-    tls_server="$(url_encode "${tls_server}")"
-    printf 'tuic://%s:%s@%s:%s?congestion_control=bbr&alpn=h3&sni=%s' \
-      "$uuid" "$(url_encode "$password")" "$host" "$port" "$tls_server"
-    if [ "$cert_mode" = "self-signed" ]; then
-      printf '&allow_insecure=1'
+    # 证书不覆盖链接 SNI（自签或自定义+伪装 SNI）时 allow_insecure=1 跳过校验
+    if cert_needs_insecure "$cert_mode" "$certificate_path" "${tls_server}"; then
+      insecure_flag='&allow_insecure=1'
+    else
+      insecure_flag=""
     fi
-    printf '#%s' "$(url_encode "$name")"
+    tls_server="$(url_encode "${tls_server}")"
+    printf 'tuic://%s:%s@%s:%s?congestion_control=bbr&alpn=h3&sni=%s%s#%s' \
+      "$uuid" "$(url_encode "$password")" "$host" "$port" "$tls_server" "${insecure_flag}" "$(url_encode "$name")"
     ;;
   hy2)
-    tls_server="$(url_encode "${tls_server}")"
-    printf 'hysteria2://%s@%s:%s?sni=%s' \
-      "$(url_encode "$password")" "$host" "$port" "$tls_server"
-    if [ "$cert_mode" = "self-signed" ]; then
+    # 证书不覆盖链接 SNI（自签或自定义+伪装 SNI）时固定指纹/跳过校验
+    if cert_needs_insecure "$cert_mode" "$certificate_path" "${tls_server}"; then
       # 自签优先固定证书指纹（新版客户端已拒绝 insecure）；无指纹再退回 insecure=1
       fp="$(cert_fingerprint "${certificate_path}" 2>/dev/null || true)"
       if [ -n "${fp}" ]; then
-        printf '&pinSHA256=%s' "${fp}"
+        insecure_flag="&pinSHA256=${fp}"
       else
-        printf '&insecure=1'
+        insecure_flag="&insecure=1"
       fi
+    else
+      insecure_flag=""
     fi
-    printf '#%s' "$(url_encode "$name")"
+    tls_server="$(url_encode "${tls_server}")"
+    printf 'hysteria2://%s@%s:%s?sni=%s%s#%s' \
+      "$(url_encode "$password")" "$host" "$port" "$tls_server" "${insecure_flag}" "$(url_encode "$name")"
     ;;
   socks5)
     printf 'socks5://%s:%s@%s:%s#%s' \
