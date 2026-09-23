@@ -344,8 +344,10 @@ start_argo_node() {
 
 restart_all_argo_nodes() {
   # 9.3:jq 批量化——一次 bulk 拿到全部 (tag, protocol)，替代逐 tag node_value
-  local tag protocol
-  while IFS=$'\t' read -r tag protocol; do
+  # node_meta_bulk 输出 4 列(key/protocol/port/argo_mode)：用占位列吸收多余字段，
+  # 否则尾列拼接进 protocol 导致永远匹配不上 vless-argo（F-09）
+  local tag protocol _port _argo
+  while IFS=$'\t' read -r tag protocol _port _argo; do
     [ -n "${tag}" ] || continue
     if [ "${protocol}" = "vless-argo" ]; then
       # 单个隧道启动失败不影响其余隧道与调用方

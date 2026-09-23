@@ -441,10 +441,10 @@ await_tcp_ports() {
 # 与全 UDP 部署跳过（TCP 探活不适用，进程存活由 watchdog 保证）。
 verify_data_plane_ready() {
   # 全节点仅需 protocol/port 两字段：用 node_meta_bulk 一次 jq 拿到（9.3 jq 批量化）
-  # 字段顺序同 node_value：protocol / port
-  local tag protocol port ports="" tcp_count
+  # 字段顺序同 node_value：protocol / port；node_meta_bulk 输出 4 列，argo_mode 用占位列吸收（F-09）
+  local tag protocol port _argo ports="" tcp_count
   [ -f "${NODES_FILE}" ] || return 0
-  while IFS=$'\t' read -r tag protocol port; do
+  while IFS=$'\t' read -r tag protocol port _argo; do
     [ -n "${tag}" ] || continue
     case "${protocol}" in
     vless-reality | vless-ws-tls | anytls | vless-argo | socks5)

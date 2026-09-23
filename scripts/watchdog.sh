@@ -265,7 +265,9 @@ ensure_argo_nodes() {
   [ -x "${CLOUDFLARED_BIN}" ] || return 0
 
   # 9.3：jq 批量化——一次 bulk 拿到全部 (tag, protocol, argo_mode)，替代逐 tag node_value
-  while IFS=$'\t' read -r tag protocol mode; do
+  # node_meta_bulk 输出 4 列(key/protocol/port/argo_mode)：port 用占位列吸收，
+  # 否则 mode 拿到的仍是 port，token 节点会被当临时隧道重启（F-09）
+  while IFS=$'\t' read -r tag protocol _port mode; do
     [ -n "${tag}" ] || continue
     [ "${protocol}" = "vless-argo" ] || continue
 

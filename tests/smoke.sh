@@ -221,6 +221,25 @@ assert_eval_true "hy2 自签无指纹时回退 insecure=1" 'build_share_link n2 
 # 9.3：node_meta_bulk —— 批量输出各节点 tag/protocol/port/argo_mode（TSV）
 # 5.2：UDP 探活协议识别与节点计数（纯函数；ss/netstat 存在时测端口绑定回退语义）
 assert_eval_true "node_meta_bulk 覆盖 n1/n2" 'c="$(node_meta_bulk)"; printf %s "$c" | grep -q "n1.vless-reality.443." && printf %s "$c" | grep -q "n2.hy2.11443."'
+# F-09：node_meta_bulk 输出 4 列(key/protocol/port/argo_mode)，消费端 read 必须用占位列
+# 吸收多余字段，否则尾列拼接进 protocol/mode/port——token 节点会被当临时隧道重启
+json_set_record "${NODES_FILE}" "n_argo" '{"protocol":"vless-argo","name":"Argo","port":54433,"argo_mode":"token","endpoint_domain":"ex.example.com"}'
+json_set_record "${SECRETS_FILE}" "n_argo" '{"uuid":"u","argo_token":"tok123"}'
+assert_eval_true "node_meta_bulk 4列: argo_mode=token 可达" 'node_meta_bulk | grep -q $'"'"'n_argo\tvless-argo\t54433\ttoken'"'"''
+assert_eval_true "restart_all_argo_nodes 解析 protocol=vless-argo(占位列吸收尾列)" '
+  hit=""
+  while IFS=$'"'"'\t'"'"' read -r tag protocol _port _argo; do [ "${protocol}" = "vless-argo" ] && hit="${tag}"; done < <(node_meta_bulk)
+  [ "${hit}" = "n_argo" ]'
+assert_eval_true "watchdog 4列解析 mode=token(port 不污染 mode)" '
+  got=""
+  while IFS=$'"'"'\t'"'"' read -r tag protocol _port mode; do [ "${tag}" = "n_argo" ] && got="${mode}"; done < <(node_meta_bulk)
+  [ "${got}" = "token" ]'
+assert_eval_true "verify_data_plane_ready 解析 port=54433(argo_mode 不污染 port)" '
+  got=""
+  while IFS=$'"'"'\t'"'"' read -r tag protocol port _argo; do [ "${tag}" = "n_argo" ] && got="${port}"; done < <(node_meta_bulk)
+  [ "${got}" = "54433" ]'
+json_delete_record "${NODES_FILE}" "n_argo"
+json_delete_record "${SECRETS_FILE}" "n_argo"
 assert_eval_true "udp_probeable_protocol hy2 识别" 'udp_probeable_protocol hy2'
 assert_eval_true "udp_probeable_protocol tuic-v5 识别" 'udp_probeable_protocol tuic-v5'
 assert_eval_false "udp_probeable_protocol 非UDP 拒绝" 'udp_probeable_protocol vless-reality'
