@@ -295,6 +295,16 @@
         </div>
         <p class="note">客户端连接地址 = CF 优选域名(cdn_host):cdn_port；SNI/Host 用必填的回源域名 ws_cdn_sni。<br>SNI 安全提示：不要使用 Cloudflare/Akamai 等代理或 CDN 域名作为 SNI。<br>CF 证书方案：必须粘贴源站 PEM 证书/私钥内容（用 Cloudflare Origin CA 证书），命令自动 base64 编码并在服务器上解码存储（写入托管证书目录），配 Cloudflare SSL=Full(Strict)。回源目标端口建议 wspt=443；若用其他端口，需在 CF 加 Origin Rule 把 443 改写到你设置的 wspt。</p>
       </section>
+
+      <section class="card">
+        <h2>⑦ MTProxy <span class="tip">独立 Go 版（mtg），不依赖 sing-box</span></h2>
+        <div class="row">
+          <label>监听端口 <span class="pill">mtpt</span></label>
+          <input type="text" class="port-input" id="mtpt" placeholder="填写端口即启用，或点 🎲 随机" inputmode="numeric">
+        </div>
+        <p class="note">MTProxy 为独立管理脚本（mtp），与 sbm 分离。<br>伪装域名、通信密钥、监听模式（默认 v4）由服务器自动随机生成。填端口即可一键安装。</p>
+        <div class="cmdlist" id="mtp-cmds"></div>
+      </section>
       </div>
 
       <div class="col">
@@ -434,15 +444,6 @@
         </div>
       </section>
 
-      <section class="card">
-        <h2>⑦ MTProxy <span class="tip">独立 Go 版（mtg），不依赖 sing-box</span></h2>
-        <div class="row">
-          <label>监听端口 <span class="pill">mtpt</span></label>
-          <input type="text" class="port-input" id="mtpt" placeholder="填写端口即启用，或点 🎲 随机" inputmode="numeric">
-        </div>
-        <p class="note">MTProxy 为独立管理脚本（mtp），与 sbm 分离。<br>伪装域名、通信密钥、监听模式（默认 v4）由服务器自动随机生成。填端口即可一键安装。</p>
-        <div class="cmdlist" id="mtp-cmds"></div>
-      </section>
       </div>
 
       <section class="card span2">

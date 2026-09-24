@@ -47,10 +47,10 @@ umask 077
 
 REPO_OWNER="plitoy"
 REPO_NAME="singbox-manager"
-PROJECT_VERSION="v1.5.10"
-PACKAGE_NAME="singbox-manager-v1.5.10.tar.gz"
+PROJECT_VERSION="v1.5.11"
+PACKAGE_NAME="singbox-manager-v1.5.11.tar.gz"
 # 发布流程：scripts/build-release-bundle.sh 构建可复现 bundle，其 SHA256 与此处一致
-PACKAGE_SHA256="5779c10054041109b5f2386dbea944fd818d6df2e2d16e0aaad0efc155a8f60f"
+PACKAGE_SHA256="5aa6132ee1d00db3ee5106bcb1f88fc8556ca01898fc235d11045a96d28c0efa"
 PACKAGE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${PROJECT_VERSION}/${PACKAGE_NAME}"
 
 INSTALL_BIN="/usr/local/bin/sbm"
