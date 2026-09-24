@@ -1,4 +1,4 @@
-name = "singbox-manager-interface"
+name = "sbm"
 main = "worker.js"
 compatibility_date = "2024-09-23"
 
