@@ -405,7 +405,10 @@
         </div>
         <div class="row">
           <label>SOCKS5 用户名 <span class="pill">socks5_username</span></label>
-          <input type="text" id="socks5-username" placeholder="默认 user">
+          <div class="ctl">
+            <input type="text" id="socks5-username" placeholder="默认 user，或点右侧按钮">
+            <button type="button" class="mini" id="gen-s5user">生成</button>
+          </div>
         </div>
         <div class="row">
           <label>SOCKS5 密码 <span class="pill">socks5_password</span></label>
@@ -678,6 +681,7 @@
 
   $id('gen-uuid').addEventListener('click', function () { $id('uuid').value = genUuid(); regen(); });
   $id('gen-passwd').addEventListener('click', function () { $id('passwd').value = genPassword(); regen(); });
+  $id('gen-s5user').addEventListener('click', function () { $id('socks5-username').value = genPassword(); regen(); });
   $id('gen-s5pass').addEventListener('click', function () { $id('socks5-password').value = genPassword(); regen(); });
 
   $id('copy').addEventListener('click', async function () {
