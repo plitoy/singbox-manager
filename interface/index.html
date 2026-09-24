@@ -463,11 +463,12 @@
             <option value="wget">wget</option>
           </select>
         </label>
+        <span class="hint-inline">若服务器报 curl: not found（Alpine 等精简系统），请改用 wget，无需预装 curl。</span>
         <button id="copy" class="primary" type="button">📋 复制命令</button>
         <button id="reset" class="ghost" type="button">♻️ 重置表单</button>
       </div>
       <textarea id="cmd" readonly spellcheck="false"></textarea>
-      <p class="hint">提示：整段复制粘贴到 SSH 终端回车即可执行（多行 \ 续行符已处理好）。字符串值已用英文单引号包裹，含特殊字符的密码也不会被截断；留空的项目不会出现在命令里。</p>
+      <p class="hint">提示：整段复制粘贴到 SSH 终端回车即可执行（多行 \ 续行符已处理好）。字符串值已用英文单引号包裹，含特殊字符的密码也不会被截断；留空的项目不会出现在命令里。<br>下载方式：curl 生成 <code>bash &lt;(curl -fsSL ...)</code>，wget 生成 <code>bash &lt;(wget -qO- ...)</code> 等价，按服务器已装哪种选。服务器缺 curl 时选 wget（Alpine 自带 busybox wget），无需手动 apk add curl。</p>
     </section>
   </div>
 
