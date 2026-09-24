@@ -410,16 +410,6 @@
       </section>
 
       <section class="card">
-        <h2>⑦ MTProxy <span class="tip">独立 Go 版（mtg），不依赖 sing-box</span></h2>
-        <div class="row">
-          <label>监听端口 <span class="pill">mtpt</span></label>
-          <input type="text" class="port-input" id="mtpt" placeholder="填写端口即启用，或点 🎲 随机" inputmode="numeric">
-        </div>
-        <p class="note">MTProxy 为独立管理脚本（mtp），与 sbm 分离。<br>伪装域名、通信密钥、监听模式（默认 v4）由服务器自动随机生成。填端口即可一键安装。</p>
-        <div class="cmdlist" id="mtp-cmds"></div>
-      </section>
-
-      <section class="card">
         <h2>⑧ 执行动作 <span class="tip">尾部参数</span></h2>
         <div class="row">
           <label>执行动作</label>
@@ -443,6 +433,16 @@
           </select>
         </div>
       </section>
+
+      <section class="card">
+        <h2>⑦ MTProxy <span class="tip">独立 Go 版（mtg），不依赖 sing-box</span></h2>
+        <div class="row">
+          <label>监听端口 <span class="pill">mtpt</span></label>
+          <input type="text" class="port-input" id="mtpt" placeholder="填写端口即启用，或点 🎲 随机" inputmode="numeric">
+        </div>
+        <p class="note">MTProxy 为独立管理脚本（mtp），与 sbm 分离。<br>伪装域名、通信密钥、监听模式（默认 v4）由服务器自动随机生成。填端口即可一键安装。</p>
+        <div class="cmdlist" id="mtp-cmds"></div>
+      </section>
       </div>
 
       <section class="card span2">
@@ -463,12 +463,11 @@
             <option value="wget">wget</option>
           </select>
         </label>
-        <span class="hint-inline">若服务器报 curl: not found（Alpine 等精简系统），请改用 wget，无需预装 curl。</span>
         <button id="copy" class="primary" type="button">📋 复制命令</button>
         <button id="reset" class="ghost" type="button">♻️ 重置表单</button>
       </div>
       <textarea id="cmd" readonly spellcheck="false"></textarea>
-      <p class="hint">提示：整段复制粘贴到 SSH 终端回车即可执行（多行 \ 续行符已处理好）。字符串值已用英文单引号包裹，含特殊字符的密码也不会被截断；留空的项目不会出现在命令里。<br>下载方式：curl 生成 <code>bash &lt;(curl -fsSL ...)</code>，wget 生成 <code>bash &lt;(wget -qO- ...)</code> 等价，按服务器已装哪种选。服务器缺 curl 时选 wget（Alpine 自带 busybox wget），无需手动 apk add curl。</p>
+      <p class="hint">提示：整段复制粘贴到 SSH 终端回车即可执行（多行 \ 续行符已处理好）。字符串值已用英文单引号包裹，含特殊字符的密码也不会被截断；留空的项目不会出现在命令里。</p>
     </section>
   </div>
 
