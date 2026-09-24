@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=bash
 # Alpine 等最小化系统自举：若当前 shell 不是 bash（例如纯净 Alpine 的 ash / sh install.sh），
-# 先补齐 bash/curl，再在 bash 下重新执行本脚本，确保其余部分（仅 bash 兼容）正常解析运行。
+# 先补齐 bash/curl 等常用依赖，再在 bash 下重新执行本脚本，确保其余部分（仅 bash 兼容）正常解析运行。
 # 已是 bash 时（如 ubuntu bash -c 或 bash <(curl ...)）直接跳过，避免对进程替换 fd 二次读取。
 if [ -z "${SBM_INSTALL_BOOTSTRAPPED:-}" ] && [ -z "${BASH_VERSION:-}" ]; then
   SBM_INSTALL_BOOTSTRAPPED=1
@@ -9,26 +9,33 @@ if [ -z "${SBM_INSTALL_BOOTSTRAPPED:-}" ] && [ -z "${BASH_VERSION:-}" ]; then
 
   has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
-  if ! has_cmd bash; then
-    if has_cmd apk; then
-      echo "[sbm] 检测到 Alpine，正在安装 bash ..."
-      apk add --no-cache bash >/dev/null 2>&1 || true
-    fi
-    if ! has_cmd bash; then
-      echo "缺少 bash，请先安装：apk add bash（或其它发行版对应方式）" >&2
-      exit 1
+  # 用不到的依赖也一并安装（sudo/unzip/vim 非本脚本必需，但便于用户在纯净系统上运维），
+  # 包名全部硬编码为 alpine 官方命名，非 Alpine 发行版只提示不自动装。
+  MIN_PACKAGES="bash curl wget sudo unzip vim"
+
+  if has_cmd apk; then
+    # 先更新索引再安装：纯净 Alpine 首次 apk add --no-cache 会因索引未初始化而失败，
+    # 必须 apk update 先行（busybox 上实测缺 curl 即因此）。
+    echo "[sbm] 检测到 Alpine，apk update 并安装缺失依赖（${MIN_PACKAGES}）..."
+    apk update >/dev/null 2>&1 || true
+    # shellcheck disable=SC2086
+    apk add --no-cache ${MIN_PACKAGES} >/dev/null 2>&1 || true
+    # 逐项兜底：apk 一次性批量装失败时逐个重试
+    if ! has_cmd bash || ! has_cmd curl || ! has_cmd wget; then
+      for pkg in ${MIN_PACKAGES}; do
+        apk add --no-cache "${pkg}" >/dev/null 2>&1 || true
+      done
     fi
   fi
 
+  if ! has_cmd bash; then
+    echo "缺少 bash，请先安装：apk add bash（或其它发行版对应方式）" >&2
+    exit 1
+  fi
+
   if ! has_cmd curl && ! has_cmd wget; then
-    if has_cmd apk; then
-      echo "[sbm] 检测到 Alpine，正在安装 curl ..."
-      apk add --no-cache curl >/dev/null 2>&1 || true
-    fi
-    if ! has_cmd curl && ! has_cmd wget; then
-      echo "缺少 curl/wget，请先安装。Alpine: apk add curl" >&2
-      exit 1
-    fi
+    echo "缺少 curl/wget，请先安装。Alpine: apk update && apk add curl" >&2
+    exit 1
   fi
 
   exec bash "$0" "$@"
@@ -40,10 +47,10 @@ umask 077
 
 REPO_OWNER="plitoy"
 REPO_NAME="singbox-manager"
-PROJECT_VERSION="v1.5.9"
-PACKAGE_NAME="singbox-manager-v1.5.9.tar.gz"
+PROJECT_VERSION="v1.5.10"
+PACKAGE_NAME="singbox-manager-v1.5.10.tar.gz"
 # 发布流程：scripts/build-release-bundle.sh 构建可复现 bundle，其 SHA256 与此处一致
-PACKAGE_SHA256="7d047ed1224dc0fba43ba3c7da8ca9cc51584b2631c55bc63b2d0f48526294da"
+PACKAGE_SHA256="5779c10054041109b5f2386dbea944fd818d6df2e2d16e0aaad0efc155a8f60f"
 PACKAGE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${PROJECT_VERSION}/${PACKAGE_NAME}"
 
 INSTALL_BIN="/usr/local/bin/sbm"

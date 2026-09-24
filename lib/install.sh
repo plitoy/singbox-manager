@@ -23,6 +23,7 @@ pkg_install() {
   elif command_exists yum; then
     yum install -y "$@"
   elif command_exists apk; then
+    apk update >/dev/null 2>&1 || true
     apk add --no-cache "$@"
   elif command_exists pacman; then
     pacman -Sy --noconfirm "$@"
@@ -98,6 +99,7 @@ ensure_binary_runs() {
 
   if command_exists apk; then
     print_info "检测到 Alpine，正在安装 gcompat 兼容层"
+    apk update >/dev/null 2>&1 || true
     apk add --no-cache gcompat >/dev/null 2>&1
   fi
 
